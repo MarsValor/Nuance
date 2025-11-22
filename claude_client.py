@@ -89,6 +89,52 @@ class ClaudeClient:
 
         return response.content[0].text
 
+    def generate_counterfactuals(
+        self,
+        claim_quote: str,
+        fallacy_type: str,
+        check_explanation: str
+    ) -> List[str]:
+        """
+        Generate alternative explanations for a logical fallacy.
+
+        This is the "deep reasoning" feature that teaches users to think
+        about alternative hypotheses and confounding factors.
+
+        Args:
+            claim_quote: The problematic claim
+            fallacy_type: Type of logical error (e.g., "Correlation vs Causation")
+            check_explanation: Why this is problematic
+
+        Returns:
+            List of 3-4 alternative explanations
+        """
+        prompt = self._build_counterfactual_prompt(claim_quote, fallacy_type, check_explanation)
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            temperature=0.7,  # Slightly higher for creative alternatives
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Parse response into list of alternatives
+        response_text = response.content[0].text.strip()
+
+        # Split by numbered lines (1., 2., 3., etc.) or bullet points
+        import re
+        alternatives = re.split(r'\n\s*[\d•\-\*]+[\.\)]\s*', response_text)
+
+        # Clean up and filter
+        alternatives = [alt.strip() for alt in alternatives if alt.strip()]
+
+        # If parsing failed, try splitting by newlines
+        if len(alternatives) < 2:
+            alternatives = [line.strip() for line in response_text.split('\n') if line.strip()]
+
+        # Return up to 4 alternatives
+        return alternatives[:4]
+
     def _build_extraction_prompt(self, text: str) -> str:
         """Build prompt for claim extraction."""
         return f"""You are a statistical reasoning auditor. Your job is to extract concrete, testable claims from text.
@@ -172,6 +218,74 @@ Your task: Write a clear, educational summary (200-300 words) that:
 Focus on being helpful, not judgmental. The goal is to train the reader's "bullshit detector."
 
 Write your summary now:"""
+
+    def _build_counterfactual_prompt(
+        self,
+        claim_quote: str,
+        fallacy_type: str,
+        check_explanation: str
+    ) -> str:
+        """Build prompt for generating counterfactual explanations."""
+
+        # Customize prompts based on fallacy type
+        if "correlation" in fallacy_type.lower() or "causation" in fallacy_type.lower():
+            focus = """
+Think like a skeptical scientist. What are alternative explanations for this correlation?
+Consider:
+- Confounding variables (what else might cause both?)
+- Reverse causation (does B actually cause A instead?)
+- Selection bias (who was studied?)
+- Spurious correlation (coincidence?)"""
+
+        elif "sample" in fallacy_type.lower():
+            focus = """
+Think about sample size issues. What could go wrong with small or biased samples?
+Consider:
+- Statistical noise and random variation
+- Non-representative samples
+- Cherry-picked data
+- Publication bias"""
+
+        elif "extreme" in fallacy_type.lower() or "absolute" in fallacy_type.lower():
+            focus = """
+Think about exceptions and edge cases. Why is absolute language problematic?
+Consider:
+- Edge cases and exceptions
+- Context-dependent situations
+- Individual variation
+- Time-dependent factors"""
+
+        elif "base rate" in fallacy_type.lower():
+            focus = """
+Think about missing context. What information would change the interpretation?
+Consider:
+- Absolute numbers vs percentages
+- Starting baseline
+- Comparison groups
+- Historical context"""
+
+        else:
+            focus = """
+Think critically about what might be wrong or missing in this reasoning.
+Consider alternative explanations, missing information, and potential biases."""
+
+        return f"""You are teaching critical thinking. A claim has a logical issue.
+
+Claim: "{claim_quote}"
+
+Issue: {fallacy_type}
+Why it's problematic: {check_explanation}
+
+{focus}
+
+Generate 3-4 concise alternative explanations (each 1-2 sentences). Format as a numbered list:
+
+1. [First alternative explanation]
+2. [Second alternative explanation]
+3. [Third alternative explanation]
+4. [Fourth alternative explanation]
+
+Be specific and educational. Help the reader think deeper about this claim."""
 
 
 def get_client() -> ClaudeClient:
