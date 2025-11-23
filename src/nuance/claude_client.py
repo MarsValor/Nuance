@@ -47,18 +47,55 @@ class ClaudeClient:
             text: Input text to analyze
 
         Returns:
-            ClaimsExtraction with validated claims
+            ClaimsExtraction with validated claims (deduplicated)
         """
         prompt = self._build_extraction_prompt(text)
 
         messages = [{"role": "user", "content": prompt}]
 
-        return validate_with_retry(
+        extraction = validate_with_retry(
             client=self.client,
             model=self.model,
             initial_messages=messages,
             schema_class=ClaimsExtraction,
             max_retries=3
+        )
+
+        # Deduplicate claims based on quote similarity
+        extraction = self._deduplicate_claims(extraction)
+
+        return extraction
+
+    def _deduplicate_claims(self, extraction: ClaimsExtraction) -> ClaimsExtraction:
+        """
+        Remove duplicate claims based on quote similarity.
+
+        Args:
+            extraction: Original claims extraction
+
+        Returns:
+            ClaimsExtraction with duplicates removed and IDs resequenced
+        """
+        seen_quotes = set()
+        unique_claims = []
+
+        for claim in extraction.claims:
+            # Normalize quote for comparison (lowercase, strip whitespace)
+            normalized_quote = ' '.join(claim.quote.lower().split())
+
+            # Only add if we haven't seen this quote before
+            if normalized_quote not in seen_quotes:
+                seen_quotes.add(normalized_quote)
+                unique_claims.append(claim)
+
+        # Resequence claim IDs to be consecutive (c1, c2, c3, ...)
+        for i, claim in enumerate(unique_claims, start=1):
+            claim.claim_id = f"c{i}"
+
+        # Return new ClaimsExtraction with updated count
+        return ClaimsExtraction(
+            claims=unique_claims,
+            total_claims=len(unique_claims)
         )
 
     def generate_audit_summary(
@@ -128,9 +165,14 @@ class ClaudeClient:
         # Clean up and filter
         alternatives = [alt.strip() for alt in alternatives if alt.strip()]
 
+        # Remove any leading number patterns (e.g., "1.", "2)", etc.) from each alternative
+        alternatives = [re.sub(r'^\s*[\d•\-\*]+[\.\)]\s*', '', alt) for alt in alternatives]
+
         # If parsing failed, try splitting by newlines
         if len(alternatives) < 2:
             alternatives = [line.strip() for line in response_text.split('\n') if line.strip()]
+            # Remove numbering from newline-split alternatives too
+            alternatives = [re.sub(r'^\s*[\d•\-\*]+[\.\)]\s*', '', alt) for alt in alternatives]
 
         # Return up to 4 alternatives
         return alternatives[:4]
@@ -154,6 +196,7 @@ For each claim, identify:
 IMPORTANT INSTRUCTIONS:
 - Extract ONLY claims that make factual assertions
 - Do NOT extract opinions or subjective statements
+- Do NOT extract the same claim multiple times (no duplicates)
 - Include the exact quote from the original text
 - Assign sequential IDs: c1, c2, c3, etc.
 - Be thorough but precise
