@@ -25,8 +25,8 @@ Unlike typical "LLM wrapper" applications, Nuance implements a **neuro-symbolic 
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  STAGE 1: Structured Extraction (Neuro)                     │
-│  ------------------------------------------------            │
-│  • Claude extracts claims into strict JSON schema            │
+│  ------------------------------------------------           │
+│  • Claude extracts claims into strict JSON schema           │
 │  • Pydantic validates structure                             │
 │  • Auto-retry on validation failure                         │
 │  • Result: ClaimsExtraction object                          │
@@ -34,7 +34,7 @@ Unlike typical "LLM wrapper" applications, Nuance implements a **neuro-symbolic 
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  STAGE 2: Deterministic Analysis (Symbolic)                 │
-│  ------------------------------------------------            │
+│  ------------------------------------------------           │
 │  • Python calculates text metrics (no LLM)                  │
 │  • Run logical checks on each claim:                        │
 │    - Correlation vs causation                               │
@@ -47,7 +47,7 @@ Unlike typical "LLM wrapper" applications, Nuance implements a **neuro-symbolic 
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  STAGE 3: Educational Synthesis                             │
-│  ------------------------------------------------            │
+│  ------------------------------------------------           │
 │  • Claude receives flagged issues                           │
 │  • Generates human-friendly educational summary             │
 │  • Explains WHY issues matter                               │
